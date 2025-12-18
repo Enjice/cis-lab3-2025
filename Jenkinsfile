@@ -184,7 +184,7 @@ pipeline {
                         sh '''
                             if [ -d "backend/allure-results" ]; then
                                 echo "Restored backend/allure-results, copying..."
-                                find backend/allure-results -name "*.json" -name "*.xml" -name "*.trx" -type f -exec cp -v {} allure-results/ \;
+                                find backend/allure-results -name "*.json" -name "*.xml" -name "*.trx" -type f -exec cp -v {} allure-results/ 2>/dev/null || true
                                 echo "Backend results copied"
                             fi
                         '''
