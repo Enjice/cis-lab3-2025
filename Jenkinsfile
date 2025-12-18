@@ -170,7 +170,7 @@ pipeline {
                         sh '''
                             if [ -d "frontend/allure-results" ]; then
                                 echo "Restored frontend/allure-results, copying..."
-                                find frontend/allure-results -name "*.json" -type f -exec cp -v {} allure-results/ \;
+                                find frontend/allure-results -name "*.json" -type f -exec cp -v {} allure-results/ 2>/dev/null || true
                                 echo "Frontend results copied"
                             fi
                         '''
