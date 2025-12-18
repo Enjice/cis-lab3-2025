@@ -80,6 +80,33 @@ pipeline {
                 }
             }
         }
+        stage('Test Backend') {
+            agent {
+                docker {
+                    image "mcr.microsoft.com/dotnet/sdk:8.0"
+                }
+            }
+            steps {
+                dir('backend') {
+                    // Установка Allure-репортера
+                    sh 'dotnet add package Allure.NUnit'
+                    
+                    // Запуск тестов с Allure
+                    sh '''
+                        dotnet test \
+                        --logger:"trx" \
+                        --results-directory:TestResults \
+                        -- NUnit.ConsoleOut=0 NUnit.AllureResults=allure-results
+                    '''
+                }
+            }
+            post {
+                always {
+                    stash name: 'backend-allure-results', 
+                          includes: 'backend/allure-results/**'
+                }
+            }
+        }
         
         stage('Prepare Allure Results') {
             steps {
