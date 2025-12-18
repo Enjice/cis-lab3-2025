@@ -172,9 +172,6 @@ pipeline {
         Frontend.Tests=true
         EOF
         '''
-        }
-        }
-        }
                     
                     // Проверяем что есть результаты
                     sh '''
