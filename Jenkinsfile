@@ -83,27 +83,79 @@ pipeline {
         stage('Test Backend') {
             agent {
                 docker {
-                    image "mcr.microsoft.com/dotnet/sdk:8.0"
+                    image "registry.access.redhat.com/ubi8/dotnet-80:8.0"
+                    // ИЛИ используйте официальный образ:
+                    // image "mcr.microsoft.com/dotnet/sdk:8.0"
                 }
             }
             steps {
                 dir('backend') {
-                    // Установка Allure-репортера
-                    sh 'dotnet add package Allure.NUnit'
-                    
-                    // Запуск тестов с Allure
-                    sh '''
-                        dotnet test \
-                        --logger:"trx" \
-                        --results-directory:TestResults \
-                        -- NUnit.ConsoleOut=0 NUnit.AllureResults=allure-results
-                    '''
+                    script {
+                        try {
+                            // Способ 1: Если используете Allure.NUnit пакет
+                            sh '''
+                                # Убедитесь, что установлен Allure.NUnit
+                                dotnet test \
+                                    --configuration Release \
+                                    --no-build \
+                                    --logger:"trx;LogFileName=test-results.trx" \
+                                    --results-directory:./TestResults \
+                                    -- NUnit.AllureResults=allure-results
+                            '''
+                            
+                            // Способ 2: Если используете стандартные тесты
+                            // sh 'dotnet test --configuration Release --logger "console;verbosity=detailed"'
+                            
+                        } catch (Exception e) {
+                            echo "Backend tests failed: ${e.getMessage()}"
+                            currentBuild.result = 'UNSTABLE'
+                        }
+                    }
                 }
             }
             post {
                 always {
-                    stash name: 'backend-allure-results', 
-                          includes: 'backend/allure-results/**'
+                    dir('backend') {
+                        script {
+                            def hasAllureResults = sh(
+                                script: 'test -d allure-results && [ "$(find allure-results -type f 2>/dev/null | wc -l)" -gt 0 ]',
+                                returnStatus: true
+                            ) == 0
+                            
+                            if (hasAllureResults) {
+                                echo "Stashing backend/allure-results"
+                                stash name: 'backend-allure-results', 
+                                      includes: 'allure-results/**', 
+                                      allowEmpty: false
+                            } else {
+                                echo "No files in backend/allure-results, checking for trx files"
+                                
+                                // Если нет allure-results, проверяем trx файлы и конвертируем их
+                                def hasTrxFiles = sh(
+                                    script: 'test -d TestResults && [ "$(find TestResults -name "*.trx" -type f 2>/dev/null | wc -l)" -gt 0 ]',
+                                    returnStatus: true
+                                ) == 0
+                                
+                                if (hasTrxFiles) {
+                                    echo "Found TRX files, converting to Allure format"
+                                    // Установите конвертер если нужно
+                                    sh '''
+                                        # Установка конвертера TRX to Allure (если требуется)
+                                        # dotnet tool install --global trx2allure
+                                        # trx2allure -i TestResults -o allure-results
+                                        
+                                        # Просто копируем как есть для примера
+                                        mkdir -p allure-results
+                                        find TestResults -name "*.trx" -exec cp {} allure-results/ \;
+                                    '''
+                                    
+                                    stash name: 'backend-allure-results', 
+                                          includes: 'allure-results/**', 
+                                          allowEmpty: false
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -112,35 +164,48 @@ pipeline {
             steps {
                 script {
                     sh 'mkdir -p allure-results'
-                    
                     echo "=== Restoring Allure results from previous stages ==="
                     
                     // Восстанавливаем результаты frontend тестов
-                    script {
-                        try {
-                            unstash 'frontend-allure-results'
-                            sh '''
-                                if [ -d "frontend/allure-results" ]; then
-                                    echo "Restored frontend/allure-results, copying..."
-                                    cp -v frontend/allure-results/*.json allure-results/ 2>&1 | head -20 || true
-                                    echo "Frontend results copied"
-                                fi
-                            '''
-                        } catch (Exception e) {
-                            echo "No frontend allure results to restore: ${e.getMessage()}"
-                        }
+                    try {
+                        unstash 'frontend-allure-results'
+                        sh '''
+                            if [ -d "frontend/allure-results" ]; then
+                                echo "Restored frontend/allure-results, copying..."
+                                find frontend/allure-results -name "*.json" -type f -exec cp -v {} allure-results/ \;
+                                echo "Frontend results copied"
+                            fi
+                        '''
+                    } catch (Exception e) {
+                        echo "No frontend allure results to restore: ${e.getMessage()}"
                     }
                     
-                    // Создаем environment.properties для Allure (в конце, чтобы не перезаписать результаты)
+                    // Восстанавливаем результаты backend тестов (ДОБАВЛЯЕМ ЭТО)
+                    try {
+                        unstash 'backend-allure-results'
+                        sh '''
+                            if [ -d "backend/allure-results" ]; then
+                                echo "Restored backend/allure-results, copying..."
+                                find backend/allure-results -name "*.json" -name "*.xml" -name "*.trx" -type f -exec cp -v {} allure-results/ \;
+                                echo "Backend results copied"
+                            fi
+                        '''
+                    } catch (Exception e) {
+                        echo "No backend allure results to restore: ${e.getMessage()}"
+                    }
+                    
+                    // Создаем environment.properties для Allure
                     sh '''
                         cat >> allure-results/environment.properties <<EOF
-                        Branch=${BRANCH_NAME}
-                        Build.Number=${BUILD_NUMBER}
-                        Build.URL=${BUILD_URL}
-                        Commit=${GIT_COMMIT}
-                        Node.Version=20
-                        DotNet.Version=8.0
-                        EOF
+        Branch=${BRANCH_NAME}
+        Build.Number=${BUILD_NUMBER}
+        Build.URL=${BUILD_URL}
+        Commit=${GIT_COMMIT}
+        Node.Version=20
+        DotNet.Version=8.0
+        Backend.Tests=true
+        Frontend.Tests=true
+        EOF
                     '''
                 }
             }
