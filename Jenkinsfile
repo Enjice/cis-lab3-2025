@@ -96,12 +96,12 @@ pipeline {
                                 export ALLURE_CONFIG=$(pwd)/Tests/bin/Release/net8.0/allureConfig.json
                                 
                                 // Запускаем тесты с Allure репортером
-                                dotnet test \
-                                    --configuration Release \
-                                    --no-build \
-                                    --logger "trx;LogFileName=test-results.trx" \
-                                    --results-directory TestResults \
-                                    --verbosity normal \
+                                dotnet test \\
+                                    --configuration Release \\
+                                    --no-build \\
+                                    --logger "trx;LogFileName=test-results.trx" \\
+                                    --results-directory TestResults \\
+                                    --verbosity normal \\
                                     --logger:"allure;ReportTargetPath=$(pwd)/allure-results"
                             '''
                         } catch (Exception e) {
@@ -140,7 +140,7 @@ pipeline {
                                     sh '''
                                         mkdir -p allure-results
                                         find TestResults -name "*.trx" -exec cp {} allure-results/ \\;
-                                        // Создаем минимальный Allure результат для каждого теста
+                                        # Создаем минимальный Allure результат для каждого теста
                                         cat > allure-results/executor.json << EOF
                                         {
                                             "name": "Jenkins",
